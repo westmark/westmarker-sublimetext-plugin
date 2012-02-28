@@ -6,6 +6,9 @@ import sublime_plugin
 class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
 
     FROM_RE = re.compile(r'^from\s([^\s]+)\simport ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
+    FROM_RE = re.compile(r'^from\s([^\s]+)\simport ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
+
+    IMPORT_RE = re.compile(r'^import ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
     IMPORT_RE = re.compile(r'^import ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
 
     def run(self, edit):
@@ -45,6 +48,6 @@ class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
 
         edit = self.view.begin_edit('OrganizePythonImportsCommand')
 
-        self.view.replace(edit, sublime.Region(start, end), import_str.rstrip('\n'))
+        self.view.replace(edit, sublime.Region(start, end), import_str.strip('\n'))
 
         self.view.end_edit(edit)

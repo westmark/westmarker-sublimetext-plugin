@@ -22,7 +22,7 @@ class PrettyPrintXmlCommand(sublime_plugin.TextCommand):
       elif extension == 'json':
         self.prettify_json(edit)
       elif extension == 'js' or extension == 'javascript':
-        self.prettify_json(edit)
+        self.view.run_command('js_format')
       elif extension == 'py' or extension == 'python':
         self.prettify_python(edit)
 
