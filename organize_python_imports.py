@@ -1,53 +1,58 @@
-import re
+import ast
 import sublime
 import sublime_plugin
 
 
+class ImportGroup(object):
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+        self.imports = []
+
+
 class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
 
-    FROM_RE = re.compile(r'^from\s([^\s]+)\simport ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
-    FROM_RE = re.compile(r'^from\s([^\s]+)\simport ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
-
-    IMPORT_RE = re.compile(r'^import ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
-    IMPORT_RE = re.compile(r'^import ((?:[^\s,]+(?:\sas\s[^,\s]+)?(?:\s*,\s*)?)+)$')
-
     def run(self, edit):
-        imports = set()
-        from_imports = {}
-        header_done = False
-        start, end = None, 0
+        import_groups = []
+        code = '\n'.join([self.view.substr(line) for line in self.view.lines(sublime.Region(0, self.view.size()))])
 
-        r = sublime.Region(0, self.view.size())
-        for r in self.view.lines(r):
-            line = self.view.substr(r)
+        st = ast.parse(code)
+        current_group = None
 
-            fm = self.FROM_RE.match(line)
-            im = self.IMPORT_RE.match(line)
-            if fm:
-                header_done = True
-                if start is None:
-                    start = r.a
-                end = r.b
-                for e in [s.strip() for s in fm.group(2).split(',')]:
-                    from_imports.setdefault(fm.group(1), set()).add(e)
-            elif im:
-                header_done = True
-                if start is None:
-                    start = r.a
-                end = r.b
-                for e in [s.strip() for s in im.group(1).split(',')]:
-                    imports.add(e)
+        for stmt in st.body:
+            if stmt.__class__ in [ast.Import, ast.ImportFrom]:
+                line_region = self.view.full_line(self.view.text_point(stmt.lineno - 1, 0))
+                if not current_group:
+                    current_group = ImportGroup(line_region.a, line_region.b)
+                    import_groups.append(current_group)
+                current_group.imports.append(stmt)
+                current_group.end = line_region.b
+
             else:
-                if line == '' or (not header_done and line[0].strip() == '#'):
-                    continue
-                else:
-                    break
-
-        import_str = '\n'.join(['import {0}'.format(p) for p in sorted(imports)]) + '\n'
-        import_str += '\n'.join(['from {0} import {1}'.format(p, ', '.join(sorted(from_imports.get(p)))) for p in sorted(from_imports.keys())]) + '\n'
+                current_group = None
 
         edit = self.view.begin_edit('OrganizePythonImportsCommand')
 
-        self.view.replace(edit, sublime.Region(start, end), import_str.strip('\n'))
+        for g in import_groups[-1::-1]:
+            imports, from_imports = set(), {}
+            for imp in g.imports:
+                if isinstance(imp, ast.Import):
+                    for alias in imp.names:
+                        if alias.asname:
+                            imports.add('import {0} as {1}'.format(alias.name, alias.asname))
+                        else:
+                            imports.add('import {0}'.format(alias.name))
+                else:
+                    from_imports.setdefault(imp.module, set())
+                    for alias in imp.names:
+                        if alias.asname:
+                            from_imports[imp.module].add('{0} as {1}'.format(alias.name, alias.asname))
+                        else:
+                            from_imports[imp.module].add('{0}'.format(alias.name))
+
+            import_str = '\n'.join(sorted(imports)) + '\n'
+            import_str += '\n'.join(['from {0} import {1}'.format(p, ', '.join(sorted(from_imports.get(p)))) for p in sorted(from_imports.keys())])
+
+            self.view.replace(edit, sublime.Region(g.start, g.end), import_str.strip('\n') + '\n')
 
         self.view.end_edit(edit)
