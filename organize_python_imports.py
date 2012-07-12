@@ -14,7 +14,7 @@ class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
 
     def run(self, edit):
         import_groups = []
-        code = '\n'.join([self.view.substr(line) for line in self.view.lines(sublime.Region(0, self.view.size()))])
+        code = '\n'.join([self.view.substr(line) for line in self.view.lines(sublime.Region(0, self.view.size())) if not self.view.substr(line).strip().startswith('#')])
 
         st = ast.parse(code)
         current_group = None
@@ -53,6 +53,6 @@ class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
             import_str = '\n'.join(sorted(imports)) + '\n'
             import_str += '\n'.join(['from {0} import {1}'.format(p, ', '.join(sorted(from_imports.get(p)))) for p in sorted(from_imports.keys())])
 
-            self.view.replace(edit, sublime.Region(g.start, g.end), import_str.strip('\n') + '\n')
+            self.view.replace(edit, sublime.Region(g.start, g.end), '\n' + import_str.strip('\n') + '\n')
 
         self.view.end_edit(edit)
