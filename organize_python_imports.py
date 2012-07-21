@@ -1,4 +1,6 @@
+import _ast
 import ast
+import pyflakes.checker as pyflakes
 import sublime
 import sublime_plugin
 
@@ -16,6 +18,7 @@ class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
         import_groups = []
         code_lines = []
         line_offset = 0
+        filename = sublime.Window.active_view(sublime.active_window()).file_name()
 
         for line in self.view.lines(sublime.Region(0, self.view.size())):
             line = self.view.substr(line)
@@ -24,45 +27,60 @@ class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
             else:
                 line_offset += 1
 
-        code = '\n'.join(code_lines)  # [self.view.substr(line) for line in self.view.lines(sublime.Region(0, self.view.size())) if not self.view.substr(line).strip().startswith('#')])
+        code = '\n'.join(code_lines)
 
-        st = ast.parse(code)
-        current_group = None
+        try:
+            tree = compile(code, filename, 'exec', _ast.PyCF_ONLY_AST)
+        except:
+            tree = None
+        else:
+            unused_imports = set()
+            for error in pyflakes.Checker(tree, filename).messages:
+                if isinstance(error, pyflakes.messages.UnusedImport):
+                    unused_imports.add(error.name)
 
-        for stmt in st.body:
-            if stmt.__class__ in [ast.Import, ast.ImportFrom]:
-                line_region = self.view.full_line(self.view.text_point(stmt.lineno - 1 + line_offset, 0))
-                if not current_group:
-                    current_group = ImportGroup(line_region.a, line_region.b)
-                    import_groups.append(current_group)
-                current_group.imports.append(stmt)
-                current_group.end = max(line_region.b, current_group.end)
+            st = ast.parse(code)
+            current_group = None
 
-            else:
-                current_group = None
+            for stmt in st.body:
+                if stmt.__class__ in [ast.Import, ast.ImportFrom]:
+                    line_region = self.view.full_line(self.view.text_point(stmt.lineno - 1 + line_offset, 0))
+                    if not current_group:
+                        current_group = ImportGroup(line_region.a, line_region.b)
+                        import_groups.append(current_group)
+                    current_group.imports.append(stmt)
+                    current_group.end = max(line_region.b, current_group.end)
 
-        edit = self.view.begin_edit('OrganizePythonImportsCommand')
-
-        for g in import_groups[-1::-1]:
-            imports, from_imports = set(), {}
-            for imp in g.imports:
-                if isinstance(imp, ast.Import):
-                    for alias in imp.names:
-                        if alias.asname:
-                            imports.add('import {0} as {1}'.format(alias.name, alias.asname))
-                        else:
-                            imports.add('import {0}'.format(alias.name))
                 else:
-                    from_imports.setdefault(imp.module, set())
-                    for alias in imp.names:
-                        if alias.asname:
-                            from_imports[imp.module].add('{0} as {1}'.format(alias.name, alias.asname))
-                        else:
-                            from_imports[imp.module].add('{0}'.format(alias.name))
+                    current_group = None
 
-            import_str = '\n'.join(sorted(imports)) + '\n'
-            import_str += '\n'.join(['from {0} import {1}'.format(p, ', '.join(sorted(from_imports.get(p)))) for p in sorted(from_imports.keys())])
+            edit = self.view.begin_edit('OrganizePythonImportsCommand')
 
-            self.view.replace(edit, sublime.Region(g.start, g.end), import_str.strip('\n') + '\n')
+            for g in import_groups[-1::-1]:
+                imports, from_imports = set(), {}
+                for imp in g.imports:
+                    if isinstance(imp, ast.Import):
+                        for alias in imp.names:
+                            if alias.asname:
+                                if alias.asname not in unused_imports:
+                                    imports.add('import {0} as {1}'.format(alias.name, alias.asname))
+                            elif alias.name not in unused_imports:
+                                imports.add('import {0}'.format(alias.name))
+                    else:
+                        from_imports.setdefault(imp.module, set())
+                        for alias in imp.names:
+                            if alias.asname:
+                                if alias.asname not in unused_imports:
+                                    from_imports[imp.module].add('{0} as {1}'.format(alias.name, alias.asname))
+                            elif alias.name not in unused_imports:
+                                from_imports[imp.module].add('{0}'.format(alias.name))
 
-        self.view.end_edit(edit)
+                import_str = '\n'.join(sorted(imports)) + '\n'
+                for p in sorted(from_imports.keys()):
+                    v = from_imports[p]
+                    if v:
+                        import_str += 'from {0} import {1}'.format(p, ', '.join(sorted(v))) + '\n'
+
+                self.view.replace(edit, sublime.Region(g.start, g.end), import_str.strip('\n') + '\n')
+
+            self.view.end_edit(edit)
