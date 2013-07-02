@@ -22,8 +22,8 @@ class UnusedImport(Message):
     message = '%r imported but unused'
 
     def __init__(self, filename, loc, name):
-        Message.__init__(self, filename, loc, use_column=False, message_args=(name,))
         self.name = name
+        Message.__init__(self, filename, loc, use_column=False, message_args=(name,))
 
 
 class RedefinedWhileUnused(Message):

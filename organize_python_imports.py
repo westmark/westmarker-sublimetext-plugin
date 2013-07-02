@@ -35,9 +35,10 @@ class OrganizePythonImportsCommand(sublime_plugin.TextCommand):
             tree = None
         else:
             unused_imports = set()
-            for error in pyflakes.Checker(tree, filename).messages:
-                if isinstance(error, pyflakes.messages.UnusedImport):
-                    unused_imports.add(error.name)
+            # for error in pyflakes.Checker(tree, filename).messages:
+            #     if isinstance(error, pyflakes.messages.UnusedImport):
+            #         print type(error)
+            #         unused_imports.add(error.name)
 
             st = ast.parse(code)
             current_group = None
